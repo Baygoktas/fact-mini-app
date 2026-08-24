@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Bunu Biliyor Muydunuz?</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body class="bg-slate-950 text-slate-100 select-none">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    function App() {
+      const [fact, setFact] = useState(null);
+      const [saved, setSaved] = useState(false);
+      const [loading, setLoading] = useState(false);
+      const [viewSaved, setViewSaved] = useState(false);
+      const [savedList, setSavedList] = useState([]);
+      const [activeFact, setActiveFact] = useState(null);
+
+      const tg = window.Telegram?.WebApp;
+      const userId = tg?.initDataUnsafe?.user?.id || 999999;
+
+      useEffect(() => {
+        if (tg) {
+          tg.ready();
+          tg.expand();
+        }
+        fetchRandom();
+      }, []);
+
+      const fetchRandom = async () => {
+        setLoading(true);
+        setSaved(false);
+        try {
+          const res = await fetch('/api/random');
+          const data = await res.json();
+          setFact(data);
+        } catch (e) {
+          console.error(e);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      const toggleSave = async () => {
+        if (!fact) return;
+        const next = !saved;
+        setSaved(next);
+        tg?.HapticFeedback?.impactOccurred('medium');
+
+        await fetch('/api/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId,
+            factId: fact.id,
+            action: next ? 'save' : 'unsave'
+          })
+        });
+      };
+
+      const openSavedView = async () => {
+        setViewSaved(true);
+        try {
+          const res = await fetch(`/api/saved?userId=${userId}`);
+          const data = await res.json();
+          setSavedList(data);
+        } catch (e) {
+          console.error(e);
+        }
+      };
+
+      return (
+        <div className="min-h-screen flex flex-col justify-between p-4 max-w-md mx-auto">
+          {/* Header */}
+          <header className="flex justify-between items-center py-2 border-b border-slate-800">
+            <h1 className="text-lg font-bold text-amber-400">Bunu Biliyor Musun?</h1>
+            <button 
+              onClick={openSavedView}
+              className="text-xs bg-slate-800 px-3 py-1.5 rounded-full border border-slate-700 active:scale-95 transition"
+            >
+              Koleksiyonum ⭐
+            </button>
+          </header>
+
+          {/* Kart */}
+          <main className="flex-1 flex flex-col justify-center my-4">
+            {loading ? (
+              <div className="aspect-square bg-slate-900 border border-slate-800 rounded-3xl flex items-center justify-center animate-pulse">
+                <span className="text-4xl animate-spin">🎲</span>
+              </div>
+            ) : fact ? (
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl flex flex-col">
+                <div className="w-full aspect-[4/3] bg-slate-950 relative">
+                  <img src={fact.image_url} alt="" className="w-full h-full object-cover" />
+                  <span className="absolute top-3 right-3 bg-black/70 backdrop-blur-md text-[10px] px-2.5 py-1 rounded-full border border-white/10 uppercase tracking-wider text-amber-300 font-bold">
+                    {fact.category}
+                  </span>
+                </div>
+                <div className="p-4 flex flex-col gap-2">
+                  <h2 className="text-base font-bold leading-tight">{fact.title}</h2>
+                  <p className="text-xs text-slate-300 leading-relaxed">{fact.short_text}</p>
+                </div>
+              </div>
+            ) : null}
+          </main>
+
+          {/* Butonlar */}
+          <footer className="grid grid-cols-2 gap-3 pb-2">
+            <button
+              onClick={fetchRandom}
+              disabled={loading}
+              className="flex items-center justify-center gap-2 bg-gradient-to-r from-amber-500 to-orange-500 active:scale-95 text-slate-950 font-bold py-3.5 px-4 rounded-2xl shadow-lg transition"
+            >
+              <span className="text-xl">🎲</span>
+              <span>Rastgele Zar</span>
+            </button>
+
+            <button
+              onClick={toggleSave}
+              disabled={!fact || loading}
+              className={`flex items-center justify-center gap-2 border font-bold py-3.5 px-4 rounded-2xl active:scale-95 transition ${
+                saved 
+                  ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400' 
+                  : 'bg-slate-900 border-slate-700 text-slate-200 hover:bg-slate-800'
+              }`}
+            >
+              <span className="text-lg">{saved ? '★' : '☆'}</span>
+              <span>{saved ? 'Kaydedildi' : 'Kaydet'}</span>
+            </button>
+          </footer>
+
+          {/* Koleksiyon & Detay Çekmecesi */}
+          {viewSaved && (
+            <div className="fixed inset-0 bg-slate-950 z-50 flex flex-col p-4 animate-fadeIn">
+              <div className="flex justify-between items-center pb-3 border-b border-slate-800">
+                <h2 className="text-base font-bold text-amber-400">
+                  {activeFact ? 'Detay' : 'Kaydedilenler ⭐'}
+                </h2>
+                <button 
+                  onClick={activeFact ? () => setActiveFact(null) : () => setViewSaved(false)}
+                  className="text-xs bg-slate-800 px-3 py-1.5 rounded-full text-slate-300"
+                >
+                  {activeFact ? '← Geri Dön' : 'Kapat ✕'}
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto py-4">
+                {!activeFact ? (
+                  savedList.length === 0 ? (
+                    <div className="text-center text-slate-500 text-sm mt-12">Henüz kaydedilen bilgi yok.</div>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-3">
+                      {savedList.map((item) => (
+                        <div 
+                          key={item.id}
+                          onClick={() => setActiveFact(item)}
+                          className="flex items-center gap-3 p-3 bg-slate-900 border border-slate-800 rounded-2xl cursor-pointer active:scale-98 transition"
+                        >
+                          <img src={item.image_url} alt="" className="w-16 h-16 rounded-xl object-cover" />
+                          <div className="flex-1">
+                            <span className="text-[10px] text-amber-400 font-semibold uppercase">{item.category}</span>
+                            <h3 className="text-sm font-semibold text-slate-100 line-clamp-1">{item.title}</h3>
+                            <p className="text-xs text-slate-400 line-clamp-1">{item.short_text}</p>
+                          </div>
+                          <span className="text-slate-500 text-xs">Detay →</span>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                ) : (
+                  <div className="flex flex-col gap-4">
+                    <img src={activeFact.image_url} alt="" className="w-full aspect-video rounded-2xl object-cover border border-slate-800" />
+                    <div>
+                      <span className="text-xs text-amber-400 font-semibold">{activeFact.category}</span>
+                      <h1 className="text-lg font-bold text-slate-100">{activeFact.title}</h1>
+                    </div>
+                    <p className="text-sm text-slate-300 leading-relaxed bg-slate-900/60 p-3.5 rounded-xl border border-slate-800/80">
+                      {activeFact.detailed_explanation}
+                    </p>
+                    {activeFact.bullet_points?.length > 0 && (
+                      <div className="space-y-2">
+                        <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Önemli Maddeler</h4>
+                        <ul className="space-y-1.5">
+                          {activeFact.bullet_points.map((pt, i) => (
+                            <li key={i} className="text-xs text-slate-300 flex items-start gap-2 bg-slate-900 p-2.5 rounded-lg border border-slate-800">
+                              <span className="text-amber-400 font-bold">•</span>
+                              <span>{pt}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
